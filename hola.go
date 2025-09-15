@@ -72,6 +72,13 @@ func main() {
 		c.JSON(200, users)
 	})
 
+	r.GET("/health", func(c *gin.Context) {
+    c.JSON(200, gin.H{
+        "ok":  true,
+        "env": os.Getenv("APP_ENV"),
+    })
+})
+
 	//crear usuario
 	r.POST("/users", func(c *gin.Context) {
 		var input struct {
