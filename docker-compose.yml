@@ -1,0 +1,99 @@
+# Compose v2+ (sin 'version', como recomienda Docker)
+services:
+  # ---------- Bases de datos ----------
+  mysql-qa:
+    image: mysql:8.4
+    container_name: mysql-qa
+    environment:
+      MYSQL_DATABASE: db              # coincide con tu db.sql y tu código (DB_NAME= "db")
+      MYSQL_ROOT_PASSWORD: margoch
+    ports:
+      - "3307:3306"                   # opcional: para conectar desde tu host si querés
+    volumes:
+       - mysqlqa_data:/var/lib/mysql         # (o mysqlprod_data en prod)
+       - ./db/db.sql:/docker-entrypoint-initdb.d/db.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pmargoch"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [qa]
+
+  mysql-prod:
+    image: mysql:8.4
+    container_name: mysql-prod
+    environment:
+      MYSQL_DATABASE: db
+      MYSQL_ROOT_PASSWORD: margoch
+    ports:
+      - "3308:3306"                   # opcional
+    volumes:
+       - mysqlprod_data:/var/lib/mysql         # (o mysqlprod_data en prod)
+       - ./db/db.sql:/docker-entrypoint-initdb.d/db.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pmargoch"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [prod]
+
+  # ---------- Apps (MISMA IMAGEN) ----------
+  app-qa:
+    build: .                          # se construye UNA VEZ desde tu Dockerfile
+    image: margarita0912/hola-gin:v1.0 # etiqueta local para reusar en PROD
+    container_name: app-qa
+    environment:
+      APP_ENV: qa
+      GIN_MODE: debug                 # Gin en modo debug
+      DB_HOST: mysql-qa               # ¡IMPORTANTE! nombre del servicio, no "localhost"
+      DB_PORT: "3306"
+      DB_NAME: db
+      DB_USER: root
+      DB_PASSWORD: margoch
+    ports:
+      - "8081:8081"                   # QA: host 8081 -> contenedor 8081
+    depends_on:
+      mysql-qa:
+        condition: service_healthy
+    networks: [qa]
+
+  app-prod:
+    image: margarita0912/hola-gin:v1.0 # MISMA IMAGEN
+    container_name: app-prod
+    environment:
+      APP_ENV: prod
+      GIN_MODE: release               # Gin en modo release
+      DB_HOST: mysql-prod
+      DB_PORT: "3306"
+      DB_NAME: db
+      DB_USER: root
+      DB_PASSWORD: margoch
+    ports:
+      - "8082:8081"                   # PROD: host 8082 -> contenedor 8081
+    depends_on:
+      mysql-prod:
+        condition: service_healthy
+    networks: [prod]
+
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - app-qa
+      - app-prod
+    networks:
+      - qa
+      - prod
+
+# ---------- Redes y Volúmenes ----------
+networks:
+  qa: {}
+  prod: {}
+
+volumes:
+  mysqlqa_data: {}
+  mysqlprod_data: {}
